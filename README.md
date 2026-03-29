@@ -13,6 +13,18 @@ By **Retro Erik** — [YouTube: Retro Hardware and Software](https://www.youtube
 
 ---
 
+## What is Tandy Mode 8?
+
+160×200 in 16 colors — a graphics mode exclusive to the IBM PCjr and Tandy 1000 series. Unlike CGA, which can only manage 4 colors at this resolution, mode 8 provides a full 16-color palette using just 16KB of VRAM.
+
+A key advantage of mode 8 is its composite video behavior: the pixel clock runs at **3.58 MHz**, exactly matching the NTSC color burst frequency. This means the TV or monitor's color decoding circuitry can perfectly track color changes, producing **clean, artifact-free 16-color output** on composite displays. By contrast, 320×200 modes run at 7.16 MHz and produce ugly artifact colors — especially on Tandy/PCjr hardware where the composite timing differs from IBM CGA.
+
+The 160×200 resolution was also widely used across 8-bit platforms (Apple II, Commodore 64, Amstrad CPC, Atari), making it a natural target for cross-platform ports. 49 games are confirmed to use this mode.
+
+For a detailed overview, see [Great Hierophant's excellent article on Nerdly Pleasures](https://nerdlypleasures.blogspot.com/2015/10/advantages-of-160x200-16-color.html).
+
+---
+
 ## 1. The Goal
 
 Create a TSR (Terminate and Stay Resident) program for the Olivetti Prodest PC1 that intercepts Tandy 1000 graphics mode calls and redirects them to the PC1's Yamaha V6355D video hardware. Two Tandy modes are relevant:
