@@ -46,7 +46,7 @@ The NTSC TSR exploits three hardware properties of the V6355D that combine to cr
 
 | Property | Detail |
 |----------|--------|
-| **VRAM aliasing** | Segments B000h and B800h map to the **same physical 16KB RAM** — the V6355D ignores address bit A15. Games write to B800h, the 16-color display reads from B000h — same physical memory. |
+| **VRAM aliasing** | Segments B000h and B800h map to the **same physical 16KB RAM** — the V6355D only receives 13 address lines (A0–A13), with A14 and A15 not connected. This creates a 4× mirror: B000h, B400h, B800h, and BC00h all map to the same 16KB. Games write to B800h, the 16-color display reads from B000h — same physical memory. *(Confirmed by Simone, March 2026.)* |
 | **Identical memory layout** | CGA modes 4/5/6 and the hidden 160×200×16 mode both use **2-bank CGA interlacing**: even rows at 0x0000, odd rows at 0x2000, with 80 bytes per row. |
 | **Compatible pixel format** | Both use **packed nibbles** (4 bits per unit). CGA writes 2bpp pixel-pairs that become 4-bit nibble indices; the V6355D reads those same nibbles as 16-color palette indices. |
 
@@ -179,7 +179,14 @@ The CPU overhead, tearing, and halved resolution make this impractical. It defea
 
 **Concept:** Upgrade the PC1's VRAM from 16KB to 64KB (by replacing the two 4416 DRAM chips with pin-compatible 4464 chips), then configure the V6355D for a true 320×200×16 mode that matches Tandy's memory layout.
 
-**Hardware requirement:** Replace 2× TI TMS4416 (16K×4) with 2× TMS4464 (64K×4) DRAM chips. These are pin-compatible drop-in replacements.
+**Hardware requirement (confirmed by Simone, March 2026):**
+1. **Connect A14 & A15** to the V6355D's memory address lines (currently disconnected)
+2. **Replace 2× 4416 with 2× 4464** DRAM chips (pin-compatible drop-in)
+3. **Tell the V6355D** it has 64KB available
+
+With all three steps, Simone confirms: *"Then there is no problem to see 64kb."*
+
+**Paging:** The V6355D starts video output from Page 0 (address B000h). For CGA compatibility, we must tell it to use **Page 2** (B800h onward), since Tandy games write to B800h.
 
 **Software approach:**
 
@@ -225,12 +232,12 @@ If NO → CPU conversion is still needed, but with full resolution (no downsampl
   Reg 0x67 b6:   0 (1-page)      Reg 0x67 b6:   1 (4-page)
 ```
 
-**Assessment: ⚠️ MOST PROMISING — but requires hardware mod + experimentation**
+**Assessment: ⚠️ MOST PROMISING — requires hardware mod + experimentation**
 
-This is the most likely path to success. If the V6355D supports 320×200×16 natively (which the documentation suggests is "likely"), this could be as elegant as the NTSC TSR. However, it requires:
-1. Physical VRAM chip replacement (4416 → 4464)
-2. Experimental register probing on real hardware
-3. Discovering the correct CRTC values
+Simone confirms the 64KB upgrade is straightforward (chip swap + A14/A15 wiring + V6355D configuration). The remaining unknowns are:
+1. The correct CRTC register values for 320×200×16
+2. Whether 4-page mode uses 4-bank interleaving compatible with Tandy
+3. Whether Page 2 selection gives the correct B800h mapping for Tandy games
 
 ---
 
@@ -468,9 +475,20 @@ Some early games (pre-1985) only check for PCjr hardware, not Tandy. Example: Tr
 
 ## 9. Key Technical Unknowns (Requires Hardware Testing)
 
+### Confirmed by Simone (March 2026)
+
+| Question | Answer |
+|----------|--------|
+| How does VRAM aliasing work? | V6355D only gets 13 address lines (A14 & A15 not connected). B000/B400/B800/BC00 all map to the same 16KB. |
+| Is the 64KB upgrade possible? | **Yes.** Connect A14 & A15, swap 4416→4464, tell V6355D about 64KB. "Then there is no problem to see 64kb." |
+| Where does V6355D start video? | Page 0 (B000h). Must set to Page 2 (B800h) for CGA/Tandy compatibility. |
+| Why did the memory map tool show different regions? | It found RAM and guessed wrong. Standard CGA only uses B8000–BBFFF, so the tool assumed B000–B7FF was something else. |
+
+### Still Unknown
+
 | Unknown | How to Test | Impact |
 |---------|-------------|--------|
-| Does V6355D support 320×200×16 with 64KB VRAM? | Replace DRAM chips, try Register 0x67 bit 6 = 1, program CRTC, write test pattern | **BLOCKING** — determines if Approach B is viable |
+| Does V6355D support 320×200×16 after VRAM upgrade? | Perform upgrade, program CRTC, write test pattern | **BLOCKING** — determines if Approach B is viable |
 | Does 4-page mode create 4-bank interlacing? | Same as above — check if data at 0x4000/0x6000 displays correctly | **BLOCKING** — determines if zero-overhead works |
 | What CRTC values does 320×200×16 need? | Start from CGA mode 4 values, double horizontal displayed characters | **HIGH** — needed for mode setup |
 | Does the BIOS initialize correctly with 64KB VRAM? | Boot PC1 with 4464 chips, observe behavior | **MODERATE** — determines if BIOS patch is needed |
@@ -484,12 +502,14 @@ Some early games (pre-1985) only check for PCjr hardware, not Tandy. Example: Tr
 The overlap with our NTSC-16COLOR TSR is too large. Only ~6 obscure PCjr exclusives would benefit. Not worth the effort.
 
 ### If we pursue a Tandy TSR at all, go straight to mode 9
-Mode 9 (320×200×16) is the real prize — hundreds of games (SCI0, Gold Box RPGs, Prince of Persia, etc.) with true 16-color artwork that CGA composite **cannot** reproduce. This requires:
+Mode 9 (320×200×16) is the real prize — hundreds of games (SCI0, Gold Box RPGs, Prince of Persia, etc.) with true 16-color artwork that CGA composite **cannot** reproduce. Simone has confirmed the VRAM upgrade is viable. This requires:
 
-1. **Acquire 4464 DRAM chips** (TMS4464 or equivalent, widely available as NOS/pulls)
-2. **Perform the VRAM upgrade** on a PC1 (swap 2× 4416 → 2× 4464)
-3. **Write a test program** (not TSR) to answer the blocking unknowns:
-   - Set Register 0x67 bit 6 = 1 (4-page mode)
+1. **Perform the VRAM upgrade** (confirmed by Simone, March 2026):
+   - Connect A14 & A15 to V6355D memory address lines
+   - Swap 2× 4416 → 2× 4464 (pin-compatible)
+   - Tell V6355D it has 64KB
+2. **Set Page 2** so V6355D outputs from B800h (CGA/Tandy compatible)
+3. **Write a test program** (not TSR) to answer the remaining unknowns:
    - Program CRTC for 160 bytes/row
    - Write a test pattern in 4-bank interleaved layout to B800h
    - Activate hidden mode (port 0x3D8 = 0x4A)
@@ -521,7 +541,7 @@ Mode 9 (320×200×16) unlocks **hundreds of games** with true 16-color artwork t
 
 ### Bottom line
 
-A Tandy TSR only makes sense if we commit to mode 9 and the VRAM upgrade. Mode 8 comes for free with that effort. The first step is acquiring 4464 DRAM chips and testing whether the V6355D can do 320×200×16 at all.
+A Tandy TSR only makes sense if we commit to mode 9 and the VRAM upgrade. Mode 8 comes for free with that effort. Simone has confirmed the 64KB upgrade is viable (connect A14/A15, swap 4416→4464, configure V6355D). The first step is performing the hardware mod and testing whether the V6355D can do 320×200×16.
 
 ---
 
